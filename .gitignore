@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+dist/
+build/
+.env
+
+# Node.js
+node_modules/
+.next/
+dist/
+build/
+
+# macOS
+.DS_Store
+
+# Misc
+*.log
+.env.local
+.env.*.local
