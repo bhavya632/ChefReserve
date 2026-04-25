@@ -132,7 +132,7 @@ def parse_servings(yield_val) -> int:
 def scrape_recipe():
     """
     Body: { url: "https://www.allrecipes.com/recipe/..." }
-    Parses the recipe, stores in Typesense, returns the recipe object.
+    Parses the recipe, stores in Firebase, returns the recipe object.
     """
     data = request.get_json()
     url = data.get("url", "").strip()
