@@ -1,8 +1,12 @@
 import { useState } from "react";
 
 const SPICE_OPTIONS = ["mild", "medium", "hot", "any"];
-const CUISINE_OPTIONS = ["any", "italian", "mexican", "asian", "american", "mediterranean", "indian", "french"];
-const MEAL_OPTIONS = ["any", "breakfast", "lunch", "dinner", "snack", "dessert"];
+const CUISINE_OPTIONS = [
+  "any", "italian", "mexican", "asian", "american", "mediterranean",
+  "indian", "french", "middle eastern", "greek", "japanese", "chinese",
+  "thai", "korean", "spanish",
+];
+const MEAL_OPTIONS = ["any", "breakfast", "lunch", "dinner", "snack", "dessert", "appetizer"];
 const DIFFICULTY_OPTIONS = ["any", "easy", "medium", "hard"];
 
 const STORAGE_KEY = "chefreserve_prefs";

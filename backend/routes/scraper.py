@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 import requests
 from bs4 import BeautifulSoup
 from lib.firebase_client import db
+from lib.recipe_metadata import normalize_cuisine, normalize_meal_type
 import uuid
 from datetime import datetime
 from urllib.parse import urlparse
@@ -87,11 +88,12 @@ def parse_recipe_from_url(url: str) -> dict:
                     "id": str(uuid.uuid4()),
                     "name": data.get("name", "Unknown Recipe"),
                     "source_url": normalize_source_url(url),
-                    "cuisine": str(data.get("recipeCuisine", "")).lower(),
-                    "meal_type": str(data.get("recipeCategory", "")).lower(),
+                    "cuisine": normalize_cuisine(data.get("recipeCuisine", "")),
+                    "meal_type": normalize_meal_type(data.get("recipeCategory", "")),
                     "cook_time_min": cook_time_min,
                     "servings": parse_servings(data.get("recipeYield", "4")),
                     "difficulty": "",
+                    "spice_level": "",
                     "instructions": instructions,
                     "ingredients_list": ingredients_list,
                     "ingredient_tokens": compute_ingredient_tokens(ingredients_list),

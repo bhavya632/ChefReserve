@@ -3,6 +3,12 @@ from urllib.parse import urlparse
 
 from flask import Blueprint, request, jsonify
 from lib.firebase_client import db
+from lib.recipe_metadata import (
+    normalize_cuisine,
+    normalize_difficulty,
+    normalize_meal_type,
+    normalize_spice_level,
+)
 
 _UNITS = {
     "cup", "cups", "c", "tbsp", "tsp", "tablespoon", "tablespoons",
@@ -196,11 +202,12 @@ def serialize_recipe(doc_id: str, doc: dict, pantry: list):
     return {
         "id": doc.get("id", doc_id),
         "name": doc.get("name", ""),
-        "cuisine": doc.get("cuisine", ""),
-        "meal_type": doc.get("meal_type", ""),
+        "cuisine": normalize_cuisine(doc.get("cuisine", "")),
+        "meal_type": normalize_meal_type(doc.get("meal_type", "")),
         "cook_time_min": doc.get("cook_time_min", 0),
         "servings": doc.get("servings", 0),
-        "difficulty": doc.get("difficulty", ""),
+        "difficulty": normalize_difficulty(doc.get("difficulty", "")),
+        "spice_level": normalize_spice_level(doc.get("spice_level", "")),
         "ingredients_list": recipe_ingredients,
         "ingredients_map": ingredients_map,
         "instructions": doc.get("instructions", []),

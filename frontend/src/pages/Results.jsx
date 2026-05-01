@@ -79,7 +79,7 @@ export default function Results() {
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <div className="text-3xl mb-3 animate-spin">✦</div>
-            <p className="text-stone-500 text-sm">Gemini is ranking your recipes…</p>
+            <p className="text-stone-500 text-sm">Groq is ranking your recipes…</p>
           </div>
         </div>
       )}

@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
 ChefReserve Web Crawler
-Crawls recipe websites from homepage URLs, enriches each recipe with Claude
-Sonnet (cuisine, meal_type, difficulty, spice_level), and saves to Firestore.
+Crawls recipe websites from homepage URLs, enriches each recipe with Groq
+(cuisine, meal_type, difficulty, spice_level), and saves to Firestore.
 
 Usage:
   python crawl_and_scrape.py <url1> [url2] ...
 
 Examples:
-  python crawl_and_scrape.py https://www.epicurious.com
   python crawl_and_scrape.py https://www.epicurious.com https://www.aparnas-kitchen.com
 
 Tuning (env vars):
@@ -18,7 +17,7 @@ Tuning (env vars):
 
 Requires:
   FIREBASE_SERVICE_ACCOUNT in .env (path to service-account JSON)
-  ANTHROPIC_API_KEY in .env
+  GROQ_API_KEY in .env
 """
 
 import json
@@ -79,6 +78,56 @@ def init_firestore():
 
 _groq = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
+_CUISINE_ALIASES = {
+    "american": {
+        "american", "north american", "united states", "us", "u.s.", "usa",
+        "u.s.a.", "us canada", "u.s. canada", "canada", "canadian",
+        "southern", "cajun", "creole",
+    },
+    "italian": {"italian", "tuscan", "sicilian"},
+    "mexican": {"mexican", "tex mex", "texmex"},
+    "asian": {
+        "asian", "asian inspired", "vietnamese", "filipino", "indonesian",
+        "malaysian", "singaporean",
+    },
+    "mediterranean": {"mediterranean"},
+    "indian": {"indian"},
+    "french": {"french"},
+    "middle eastern": {
+        "middle eastern", "middle east", "lebanese", "turkish", "persian",
+        "israeli",
+    },
+    "greek": {"greek"},
+    "japanese": {"japanese"},
+    "chinese": {"chinese", "cantonese", "hunan", "sichuan", "szechuan"},
+    "thai": {"thai"},
+    "korean": {"korean"},
+    "spanish": {"spanish"},
+    "other": {"other"},
+}
+
+_MEAL_TYPE_ALIASES = {
+    "breakfast": {"breakfast", "brunch"},
+    "lunch": {"lunch"},
+    "dinner": {"dinner", "main course", "main dish", "entree", "supper"},
+    "snack": {"snack"},
+    "dessert": {"dessert", "sweet", "baking"},
+    "appetizer": {"appetizer", "starter", "hors d oeuvre", "hors d'oeuvre"},
+    "other": {"other"},
+}
+
+_DIFFICULTY_ALIASES = {
+    "easy": {"easy", "beginner", "simple"},
+    "medium": {"medium", "intermediate", "moderate"},
+    "hard": {"hard", "advanced", "difficult"},
+}
+
+_SPICE_LEVEL_ALIASES = {
+    "mild": {"mild", "not spicy"},
+    "medium": {"medium", "moderate"},
+    "hot": {"hot", "spicy", "very spicy"},
+}
+
 _ENRICH_PROMPT = """You are a recipe classifier. Given a recipe name and ingredients, return ONLY a JSON object with these exact keys:
 - cuisine: one of [italian, mexican, asian, american, mediterranean, indian, french, middle eastern, greek, japanese, chinese, thai, korean, spanish, other]
 - meal_type: one of [breakfast, lunch, dinner, snack, dessert, appetizer, other]
@@ -124,6 +173,66 @@ def enrich_recipe(name: str, ingredients: list) -> dict:
         print(f"\n  [enrich error] {e.__class__.__name__}: {e}")
 
     return {"cuisine": "", "meal_type": "", "difficulty": "", "spice_level": ""}
+
+
+def _flatten_value(value) -> str:
+    if isinstance(value, list):
+        return " ".join(str(item or "") for item in value)
+    return str(value or "")
+
+
+def _normalize_variants(value) -> list[str]:
+    raw = _flatten_value(value).strip().lower()
+    if not raw:
+        return []
+
+    cleaned = raw.replace("&", " and ")
+    parts = [
+        part.strip()
+        for part in re.split(r"[/,;|]|(?:\band\b)", cleaned)
+        if part.strip()
+    ]
+    variants = []
+    for part in parts or [cleaned]:
+        normalized = re.sub(r"[^a-z0-9\s]", " ", part)
+        normalized = re.sub(r"\s+", " ", normalized).strip()
+        if normalized:
+            variants.append(normalized)
+    return variants
+
+
+def _canonicalize(value, aliases: dict[str, set[str]], default: str = "") -> str:
+    variants = _normalize_variants(value)
+    if not variants:
+        return default
+
+    for variant in variants:
+        for canonical, known_aliases in aliases.items():
+            if variant == canonical or variant in known_aliases:
+                return canonical
+
+    for variant in variants:
+        for canonical in aliases.keys():
+            if canonical in variant:
+                return canonical
+
+    return default or variants[0]
+
+
+def normalize_cuisine(value) -> str:
+    return _canonicalize(value, _CUISINE_ALIASES, default="")
+
+
+def normalize_meal_type(value) -> str:
+    return _canonicalize(value, _MEAL_TYPE_ALIASES, default="")
+
+
+def normalize_difficulty(value) -> str:
+    return _canonicalize(value, _DIFFICULTY_ALIASES, default="")
+
+
+def normalize_spice_level(value) -> str:
+    return _canonicalize(value, _SPICE_LEVEL_ALIASES, default="")
 
 # ---------------------------------------------------------------------------
 # Recipe extraction helpers
@@ -190,7 +299,7 @@ def compute_ingredient_tokens(ingredients: list) -> list:
 def extract_recipe(soup: BeautifulSoup, url: str) -> dict | None:
     """
     Scan all JSON-LD <script> blocks for a schema.org/Recipe object.
-    Returns a Firestore-ready recipe dict (with Claude enrichment), or None.
+    Returns a Firestore-ready recipe dict (with Groq enrichment), or None.
     """
     for script in soup.find_all("script", type="application/ld+json"):
         try:
@@ -238,16 +347,16 @@ def extract_recipe(soup: BeautifulSoup, url: str) -> dict | None:
             nums = re.findall(r"\d+", str(recipe_yield))
             servings = int(nums[0]) if nums else 4
 
-            # Use site-provided metadata where available, fill gaps with Claude
-            site_cuisine = str(item.get("recipeCuisine") or "").strip().lower()
-            site_meal_type = str(item.get("recipeCategory") or "").strip().lower()
+            # Use normalized site metadata where available, fill gaps with Groq.
+            site_cuisine = normalize_cuisine(item.get("recipeCuisine") or "")
+            site_meal_type = normalize_meal_type(item.get("recipeCategory") or "")
 
             enriched = enrich_recipe(name, ingredients_list)
 
-            cuisine = site_cuisine or enriched.get("cuisine", "")
-            meal_type = site_meal_type or enriched.get("meal_type", "")
-            difficulty = enriched.get("difficulty", "")
-            spice_level = enriched.get("spice_level", "")
+            cuisine = site_cuisine or normalize_cuisine(enriched.get("cuisine", ""))
+            meal_type = site_meal_type or normalize_meal_type(enriched.get("meal_type", ""))
+            difficulty = normalize_difficulty(enriched.get("difficulty", ""))
+            spice_level = normalize_spice_level(enriched.get("spice_level", ""))
 
             return {
                 "id": str(uuid.uuid4()),

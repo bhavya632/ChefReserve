@@ -11,7 +11,7 @@ export async function searchRecipes(pantry, minMatch = 10) {
   return data; // { recipes: [...], total: N }
 }
 
-// Rerank with Gemini using user preferences
+// Rerank with Groq using user preferences
 export async function rerankRecipes(recipes, preferences, pantry = []) {
   const { data } = await axios.post(`${BASE}/api/rerank`, {
     recipes,
